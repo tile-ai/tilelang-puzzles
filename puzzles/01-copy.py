@@ -38,7 +38,7 @@ Definition:
 def ref_copy_1d(A: torch.Tensor, B: torch.Tensor, N: int, dtype: torch.dtype):
     assert len(A.shape) == 1
     assert len(B.shape) == 1
-    assert len(A.shape[0] == N)
+    assert len(A.shape[0]) == N
     assert dtype == A.dtype == B.dtype == torch.float16
     B.copy_(A)
 
