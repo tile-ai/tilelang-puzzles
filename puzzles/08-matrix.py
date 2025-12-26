@@ -61,23 +61,7 @@ def tl_gemv(M: int, K: int, dtype, accum_dtype, BLOCK_M: int, BLOCK_K: int):
     ):
         with T.Kernel(T.ceildiv(M, BLOCK_M), threads=128) as pid_m:
             # TODO: Implement this function
-            A_local = T.alloc_fragment((BLOCK_M, BLOCK_K), dtype)
-            B_local = T.alloc_fragment((BLOCK_K,), dtype)
-            C_local = T.alloc_fragment((BLOCK_M,), accum_dtype)
-
-            AB_temp = T.alloc_fragment((BLOCK_M, BLOCK_K), accum_dtype)
-
-            T.clear(C_local)
-            for k in T.Serial(K // BLOCK_K):
-                T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_local)
-                T.copy(B[k * BLOCK_K,], B_local)
-
-                for i, j in T.Parallel(BLOCK_M, BLOCK_K):
-                    AB_temp[i, j] = A_local[i, j].astype(accum_dtype) * B_local[j].astype(accum_dtype)
-
-                T.reduce_sum(AB_temp, C_local, dim=1, clear=False)
-
-            T.copy(C_local, C[pid_m * BLOCK_M,])
+            pass
 
     return kernel
 
