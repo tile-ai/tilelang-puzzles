@@ -11,7 +11,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle, bench_puzzle
 
 """
 Dequantized Matrix Multiplication is to multiply two matrices in different precisons, which is widely
@@ -48,55 +48,55 @@ Definition:
                 C[i, j * 2 + 1] += A[i, k] * B_high
 """
 
-def ref_dequant_matmul(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, M: int, N: int, K: int, A_dtype: torch.dtype, B_storage_dtype: torch.dtype, accum_dtype: torch.dtype):
+def ref_dequant_matmul(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 2
-    assert len(C.shape) == 2
-    assert A.shape[0] == C.shape[0] == M
-    assert A.shape[1] == B.shape[0] == K
-    assert B.shape[1] == N // 2 # packed
-    assert C.shape[1] == N
-    assert A_dtype == A.dtype == C.dtype == torch.float16
-    assert B_storage_dtype == torch.uint8
-    assert accum_dtype == torch.float32
+    assert A.shape[1] == B.shape[0] # K
+    assert A.dtype == torch.float16
+    assert B.dtype == torch.uint8
+
+    K = A.shape[1]
+    N = B.shape[1] * 2 # B.shape[1] == N // 2 because of packing
 
     B_dequantized = torch.zeros((K, N), dtype=torch.float16, device=B.device)
     B_dequantized[:, ::2] = B[:, :] & 0x0F
     B_dequantized[:, 1::2] = (B[:, :] >> 4) & 0x0F
     B_dequantized = B_dequantized.to(torch.float16) - 8.0 # dequantize
 
-    torch.matmul(input=A, other=B_dequantized, out=C)
+    return torch.matmul(input=A, other=B_dequantized)
 
 
 @tilelang.jit
-def tl_dequant_matmul(M: int, N: int, K: int, A_dtype, B_storage_dtype, accum_dtype, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((M, K), A_dtype),
-        B: T.Buffer((K, N//2), B_storage_dtype),
-        C: T.Buffer((M, N), A_dtype),
-    ):
-        with T.Kernel(T.ceildiv(M, BLOCK_M), T.ceildiv(N, BLOCK_N), threads=128) as (pid_m, pid_n):
-            # TODO: Implement this function
-            A_shared = T.alloc_shared((BLOCK_M, BLOCK_K), A_dtype)
-            B_shared = T.alloc_shared((BLOCK_K, BLOCK_N // 2), B_storage_dtype)
-            B_dequantized = T.alloc_shared((BLOCK_K, BLOCK_N), A_dtype) # dequantized B
-            C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
+def tl_dequant_matmul(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
+    M, N, K = T.const("M, N, K")
+    A_dtype = T.float16
+    B_storage_dtype = T.uint8
+    A: T.Tensor((M, K), A_dtype)
+    B: T.Tensor((K, N//2), B_storage_dtype)
+    C = T.empty((M, N), A_dtype)
+    accum_dtype = T.float32
 
-            T.clear(C_local)
-            for k in T.Pipelined(T.ceildiv(K, BLOCK_K), num_stages=3):
-                T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_shared)
-                T.copy(B[k * BLOCK_K, pid_n * BLOCK_N // 2], B_shared)
+    # TODO: Implement this function
+    with T.Kernel(T.ceildiv(M, BLOCK_M), T.ceildiv(N, BLOCK_N), threads=128) as (pid_m, pid_n):
+        A_shared = T.alloc_shared((BLOCK_M, BLOCK_K), A_dtype)
+        B_shared = T.alloc_shared((BLOCK_K, BLOCK_N // 2), B_storage_dtype)
+        B_dequantized = T.alloc_shared((BLOCK_K, BLOCK_N), A_dtype) # dequantized B
+        C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
 
-                for i, j in T.Parallel(BLOCK_K, BLOCK_N // 2):
-                    B_dequantized[i, j * 2] = T.cast(B_shared[i, j] & 0x0F, A_dtype) - 8.0
-                    B_dequantized[i, j * 2 + 1] = T.cast((B_shared[i, j] >> 4) & 0x0F, A_dtype) - 8.0
+        T.clear(C_local)
+        for k in T.Pipelined(T.ceildiv(K, BLOCK_K), num_stages=3):
+            T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_shared)
+            T.copy(B[k * BLOCK_K, pid_n * BLOCK_N // 2], B_shared)
 
-                T.gemm(A_shared, B_dequantized, C_local)
+            for i, j in T.Parallel(BLOCK_K, BLOCK_N // 2):
+                B_dequantized[i, j * 2] = T.cast(B_shared[i, j] & 0x0F, A_dtype) - 8.0
+                B_dequantized[i, j * 2 + 1] = T.cast((B_shared[i, j] >> 4) & 0x0F, A_dtype) - 8.0
 
-            T.copy(C_local, C[pid_m * BLOCK_M, pid_n * BLOCK_N])
+            T.gemm(A_shared, B_dequantized, C_local)
 
-    return kernel
+        T.copy(C_local, C[pid_m * BLOCK_M, pid_n * BLOCK_N])
+
+    return C
 
 
 def run_dequant_matmul():
@@ -105,15 +105,14 @@ def run_dequant_matmul():
     M = 4096
     N = 4096
     K = 4096
-
     BLOCK_M = 128
     BLOCK_N = 128
     BLOCK_K = 64
 
-    A_dtype = torch.float16
-    B_storage_dtype = torch.uint8
-    accum_dtype = torch.float32
-    test_puzzle(tl_dequant_matmul, ref_dequant_matmul, {"M": M, "N": N, "K": K, "A_dtype": A_dtype, "B_storage_dtype": B_storage_dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K})
+    # A_dtype = torch.float16
+    # B_storage_dtype = torch.uint8
+    # accum_dtype = torch.float32
+    test_puzzle(tl_dequant_matmul, ref_dequant_matmul, {"M": M, "N": N, "K": K, "BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K})
 
 
 if __name__ == "__main__":

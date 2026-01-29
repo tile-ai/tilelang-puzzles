@@ -11,7 +11,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle, bench_puzzle
 
 
 """
@@ -39,47 +39,44 @@ Definition:
             C[i] += A[i, k] * B[k]
 """
 
-def ref_gemv(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, M: int, K: int, dtype: torch.dtype, accum_dtype: torch.dtype):
+def ref_gemv(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 1
-    assert len(C.shape) == 1
-    assert A.shape[0] == C.shape[0] == M
-    assert A.shape[1] == B.shape[0] == K
-    assert dtype == A.dtype == B.dtype == C.dtype == torch.float16
-    assert accum_dtype == torch.float32
-
-    torch.matmul(input=A, other=B, out=C)
+    assert A.shape[1] == B.shape[0] # K
+    assert A.dtype == B.dtype == torch.float16
+    return torch.matmul(input=A, other=B)
 
 
 @tilelang.jit
-def tl_gemv(M: int, K: int, dtype, accum_dtype, BLOCK_M: int, BLOCK_K: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((M, K), dtype),
-        B: T.Buffer((K,), dtype),
-        C: T.Buffer((M,), dtype),
-    ):
-        with T.Kernel(T.ceildiv(M, BLOCK_M), threads=128) as pid_m:
-            # TODO: Implement this function
-            A_local = T.alloc_fragment((BLOCK_M, BLOCK_K), dtype)
-            B_local = T.alloc_fragment((BLOCK_K,), dtype)
-            C_local = T.alloc_fragment((BLOCK_M,), accum_dtype)
+def tl_gemv(A, B, BLOCK_M: int, BLOCK_K: int):
+    M, K = T.const("M, K")
+    dtype = T.float16
+    accum_dtype = T.float32
+    A: T.Tensor((M, K), dtype)
+    B: T.Tensor((K,), dtype)
+    C = T.empty((M,), dtype)
 
-            AB_temp = T.alloc_fragment((BLOCK_M, BLOCK_K), accum_dtype)
+    # TODO: Implement this function
+    with T.Kernel(T.ceildiv(M, BLOCK_M), threads=128) as pid_m:
+        A_local = T.alloc_fragment((BLOCK_M, BLOCK_K), dtype)
+        B_local = T.alloc_fragment((BLOCK_K,), dtype)
+        C_local = T.alloc_fragment((BLOCK_M,), accum_dtype)
 
-            T.clear(C_local)
-            for k in T.Serial(K // BLOCK_K):
-                T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_local)
-                T.copy(B[k * BLOCK_K,], B_local)
+        AB_temp = T.alloc_fragment((BLOCK_M, BLOCK_K), accum_dtype)
 
-                for i, j in T.Parallel(BLOCK_M, BLOCK_K):
-                    AB_temp[i, j] = A_local[i, j].astype(accum_dtype) * B_local[j].astype(accum_dtype)
+        T.clear(C_local)
+        for k in T.Serial(K // BLOCK_K):
+            T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_local)
+            T.copy(B[k * BLOCK_K,], B_local)
 
-                T.reduce_sum(AB_temp, C_local, dim=1, clear=False)
+            for i, j in T.Parallel(BLOCK_M, BLOCK_K):
+                AB_temp[i, j] = A_local[i, j].astype(accum_dtype) * B_local[j].astype(accum_dtype)
 
-            T.copy(C_local, C[pid_m * BLOCK_M,])
+            T.reduce_sum(AB_temp, C_local, dim=1, clear=False)
 
-    return kernel
+        T.copy(C_local, C[pid_m * BLOCK_M,])
+
+    return C
 
 
 def run_gemv():
@@ -87,14 +84,11 @@ def run_gemv():
 
     M = 4096
     K = 4096
-
     BLOCK_M = 128
     BLOCK_K = 32
 
-    dtype = torch.float16
-    accum_dtype = torch.float32
-    test_puzzle(tl_gemv, ref_gemv, {"M": M, "K": K, "dtype": dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_K": BLOCK_K})
-    bench_puzzle(tl_gemv, ref_gemv, {"M": M, "K": K, "dtype": dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_K": BLOCK_K}, bench_torch=True)
+    test_puzzle(tl_gemv, ref_gemv, {"M": M, "K": K, "BLOCK_M": BLOCK_M, "BLOCK_K": BLOCK_K})
+    bench_puzzle(tl_gemv, ref_gemv, {"M": M, "K": K, "BLOCK_M": BLOCK_M, "BLOCK_K": BLOCK_K}, bench_torch=True)
 
 
 """
@@ -125,42 +119,38 @@ Definition:
                 C[i, j] += A[i, k] * B[k, j]
 """
 
-def ref_matmul(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, M: int, N: int, K: int, dtype: torch.dtype, accum_dtype: torch.dtype):
+def ref_matmul(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 2
-    assert len(C.shape) == 2
-    assert A.shape[0] == C.shape[0] == M
-    assert A.shape[1] == B.shape[0] == K
-    assert B.shape[1] == C.shape[1] == N
-    assert dtype == A.dtype == B.dtype == C.dtype == torch.float16
-    assert accum_dtype == torch.float32
-
-    torch.matmul(input=A, other=B, out=C)
+    assert A.shape[1] == B.shape[0] # K
+    assert A.dtype == B.dtype == torch.float16
+    return torch.matmul(input=A, other=B)
 
 
 @tilelang.jit
-def tl_matmul_naive(M: int, N: int, K: int, dtype, accum_dtype, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((M, K), dtype),
-        B: T.Buffer((K, N), dtype),
-        C: T.Buffer((M, N), dtype),
-    ):
-        with T.Kernel(T.ceildiv(N, BLOCK_N), T.ceildiv(M, BLOCK_M), threads=128) as (bx, by):
-            # TODO: Implement this function
-            A_local = T.alloc_fragment((BLOCK_M, BLOCK_K), dtype)
-            B_local = T.alloc_fragment((BLOCK_K, BLOCK_N), dtype)
-            C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
+def tl_matmul_naive(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
+    M, N, K = T.const("M, N, K")
+    dtype = T.float16
+    accum_dtype = T.float32
+    A: T.Tensor((M, K), dtype)
+    B: T.Tensor((K, N), dtype)
+    C = T.empty((M, N), dtype)
 
-            T.clear(C_local)
-            for k in T.Serial(K // BLOCK_K):
-                T.copy(A[by * BLOCK_M, k * BLOCK_K], A_local)
-                T.copy(B[k * BLOCK_K, bx * BLOCK_N], B_local)
-                T.gemm(A_local, B_local, C_local)
+    # TODO: Implement this function
+    with T.Kernel(T.ceildiv(N, BLOCK_N), T.ceildiv(M, BLOCK_M), threads=128) as (bx, by):
+        A_local = T.alloc_fragment((BLOCK_M, BLOCK_K), dtype)
+        B_local = T.alloc_fragment((BLOCK_K, BLOCK_N), dtype)
+        C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
 
-            T.copy(C_local, C[by * BLOCK_M, bx * BLOCK_N])
+        T.clear(C_local)
+        for k in T.Serial(K // BLOCK_K):
+            T.copy(A[by * BLOCK_M, k * BLOCK_K], A_local)
+            T.copy(B[k * BLOCK_K, bx * BLOCK_N], B_local)
+            T.gemm(A_local, B_local, C_local)
 
-    return kernel
+        T.copy(C_local, C[by * BLOCK_M, bx * BLOCK_N])
+
+    return C
 
 
 def run_matmul_naive():
@@ -169,16 +159,12 @@ def run_matmul_naive():
     M = 4096
     N = 4096
     K = 4096
-
     BLOCK_M = 128
     BLOCK_N = 128
     BLOCK_K = 64
 
-    dtype = torch.float16
-    accum_dtype = torch.float32
-
-    test_puzzle(tl_matmul_naive, ref_matmul, {"M": M, "N": N, "K": K, "dtype": dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K})
-    bench_puzzle(tl_matmul_naive, ref_matmul, {"M": M, "N": N, "K": K, "dtype": dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K}, bench_torch=True)
+    test_puzzle(tl_matmul_naive, ref_matmul, {"M": M, "N": N, "K": K, "BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K})
+    bench_puzzle(tl_matmul_naive, ref_matmul, {"M": M, "N": N, "K": K, "BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K}, bench_torch=True)
 
 
 """
@@ -193,28 +179,29 @@ After modifying the code, we can take a look at the generated CUDA code and comp
 
 
 @tilelang.jit
-def tl_matmul_opt(M: int, N: int, K: int, dtype, accum_dtype, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((M, K), dtype),
-        B: T.Buffer((K, N), dtype),
-        C: T.Buffer((M, N), dtype),
-    ):
-        with T.Kernel(T.ceildiv(N, BLOCK_N), T.ceildiv(M, BLOCK_M), threads=128) as (bx, by):
-            # TODO: Implement this function
-            A_shared = T.alloc_shared((BLOCK_M, BLOCK_K), dtype)
-            B_shared = T.alloc_shared((BLOCK_K, BLOCK_N), dtype)
-            C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
+def tl_matmul_opt(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
+    M, N, K = T.const("M, N, K")
+    dtype = T.float16
+    accum_dtype = T.float32
+    A: T.Tensor((M, K), dtype)
+    B: T.Tensor((K, N), dtype)
+    C = T.empty((M, N), dtype)
 
-            T.clear(C_local)
-            for k in T.Pipelined(K // BLOCK_K, num_stages=3):
-                T.copy(A[by * BLOCK_M, k * BLOCK_K], A_shared)
-                T.copy(B[k * BLOCK_K, bx * BLOCK_N], B_shared)
-                T.gemm(A_shared, B_shared, C_local)
+    # TODO: Implement this function
+    with T.Kernel(T.ceildiv(N, BLOCK_N), T.ceildiv(M, BLOCK_M), threads=128) as (bx, by):
+        A_shared = T.alloc_shared((BLOCK_M, BLOCK_K), dtype)
+        B_shared = T.alloc_shared((BLOCK_K, BLOCK_N), dtype)
+        C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
 
-            T.copy(C_local, C[by * BLOCK_M, bx * BLOCK_N])
+        T.clear(C_local)
+        for k in T.Pipelined(K // BLOCK_K, num_stages=3):
+            T.copy(A[by * BLOCK_M, k * BLOCK_K], A_shared)
+            T.copy(B[k * BLOCK_K, bx * BLOCK_N], B_shared)
+            T.gemm(A_shared, B_shared, C_local)
 
-    return kernel
+        T.copy(C_local, C[by * BLOCK_M, bx * BLOCK_N])
+
+    return C
 
 
 def run_matmul_opt():
@@ -223,26 +210,28 @@ def run_matmul_opt():
     M = 4096
     N = 4096
     K = 4096
-
     BLOCK_M = 128
     BLOCK_N = 128
     BLOCK_K = 64
-
-    dtype = torch.float16
-    accum_dtype = torch.float32
-
+    args_dict = {
+        "M": M,
+        "N": N,
+        "K": K,
+        "BLOCK_M": BLOCK_M,
+        "BLOCK_N": BLOCK_N,
+        "BLOCK_K": BLOCK_K,
+    }
 
     print("Naive Matmul Implementation: ")
-    naive_matmul_kernel = tl_matmul_naive(M, N, K, dtype, accum_dtype, BLOCK_M, BLOCK_N, BLOCK_K)
+    naive_matmul_kernel = tl_matmul_naive.compile(**args_dict)
     naive_matmul_kernel.print_source_code()
 
-
     print("OPT Matmul Implementation: ")
-    opt_matmul_kernel = tl_matmul_opt(M, N, K, dtype, accum_dtype, BLOCK_M, BLOCK_N, BLOCK_K)
+    opt_matmul_kernel = tl_matmul_opt.compile(**args_dict)
     opt_matmul_kernel.print_source_code()
 
-    bench_puzzle(tl_matmul_naive, ref_matmul, {"M": M, "N": N, "K": K, "dtype": dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K}, bench_name="Naive Matmul", bench_torch=True)
-    bench_puzzle(tl_matmul_opt, ref_matmul, {"M": M, "N": N, "K": K, "dtype": dtype, "accum_dtype": accum_dtype}, {"BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K}, bench_name="OPT Matmul", bench_torch=True)
+    bench_puzzle(tl_matmul_naive, ref_matmul, args_dict, bench_torch=True)
+    bench_puzzle(tl_matmul_opt, ref_matmul, args_dict, bench_torch=True)
 
 
 if __name__ == "__main__":
