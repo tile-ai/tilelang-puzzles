@@ -11,7 +11,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle, bench_puzzle
 
 """
 Consider an outer vector addition operation. The result is a matrix where
@@ -42,30 +42,24 @@ Definition:
             C[i, j] = A[i] + B[j]
 """
 
-def ref_outer_add(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, N: int, M: int,dtype: torch.dtype):
+def ref_outer_add(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 1
     assert len(B.shape) == 1
-    assert A.shape[0] == N
-    assert B.shape[0] == M
-    assert len(C.shape) == 2
-    assert C.shape[0] == N
-    assert C.shape[1] == M
-    assert dtype == A.dtype == B.dtype == C.dtype == torch.float16
-    torch.add(input=A[:, None], other=B[None, :], out=C)
+    assert A.dtype == B.dtype == torch.float16
+    return torch.add(input=A[:, None], other=B[None, :])
 
 
 @tilelang.jit
-def tl_outer_add(N: int, M: int, dtype: torch.dtype, BLOCK_N: int, BLOCK_M: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((N,), dtype),
-        B: T.Buffer((M,), dtype),
-        C: T.Buffer((N, M), dtype)
-    ):
-        # TODO: Implement this function
-        pass
+def tl_outer_add(A, B, BLOCK_N: int, BLOCK_M: int):
+    N, M = T.const("N, M")
+    dtype = T.float16
+    A: T.Tensor((N,), dtype)
+    B: T.Tensor((M,), dtype)
+    C = T.empty((N, M), dtype)
 
-    return kernel
+    # TODO: Implement this function
+
+    return C
 
 
 def run_outer_add():
@@ -74,8 +68,7 @@ def run_outer_add():
     M = 4096
     BLOCK_N = 1024
     BLOCK_M = 1024
-    dtype = torch.float16
-    test_puzzle(tl_outer_add, ref_outer_add, {"N": N, "M": M, "dtype": dtype}, {"BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
+    test_puzzle(tl_outer_add, ref_outer_add, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
 
 
 if __name__ == "__main__":
