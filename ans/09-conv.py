@@ -183,7 +183,6 @@ def ref_conv1d_multi_outchannel(X: torch.Tensor, K: torch.Tensor):
     #                     O[i, j, f] += X[i, j + k] * K[k, f]
     # return O
 
-
     padding_size = KL - 1
     X_padded = torch.nn.functional.pad(X.view(N, 1, L), (0, padding_size))
 
@@ -271,10 +270,9 @@ def tl_conv1d_img2col(X, K, BLOCK_N: int, BLOCK_L: int):
 
         for i, j, k in T.Parallel(BLOCK_N, BLOCK_L, KL):
             if pid_l * BLOCK_L + j + k < L:
-                X_shared[i, j, k] = X[pid_n * BLOCK_N + i, pid_l * BLOCK_L + j + k]
-            else:
-                X_shared[i, j, k] = 0
-
+                X_shared[i, j, k] = T.if_then_else(
+                    pid_l * BLOCK_L + j + k < L, X[pid_n * BLOCK_N + i, pid_l * BLOCK_L + j + k], 0
+                )
         X_reshaped = T.reshape(X_shared, (BLOCK_N * BLOCK_L, KL))
         T.copy(K, K_shared)
         T.gemm(X_reshaped, K_shared, O_local, clear_accum=True)
