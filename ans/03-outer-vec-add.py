@@ -59,9 +59,9 @@ def tl_outer_add(A, B, BLOCK_N: int, BLOCK_M: int):
     C = T.empty((N, M), dtype)
 
     # TODO: Implement this function
-    with T.Kernel(N // BLOCK_N, M // BLOCK_M, threads=256) as (bx, by):
-        n_idx = bx * BLOCK_N
-        m_idx = by * BLOCK_M
+    with T.Kernel(N // BLOCK_N, M // BLOCK_M, threads=256) as (pid_n, pid_m):
+        n_idx = pid_n * BLOCK_N
+        m_idx = pid_m * BLOCK_M
         A_local = T.alloc_fragment((BLOCK_N,), dtype)
         B_local = T.alloc_fragment((BLOCK_M,), dtype)
         C_local = T.alloc_fragment((BLOCK_N, BLOCK_M), dtype)

@@ -51,8 +51,8 @@ def tl_add_1d(A, B, BLOCK_N: int):
     B: T.Tensor((N,), T.float16)
     C = T.empty((N,), T.float16)
 
-    with T.Kernel(N // BLOCK_N, threads=256) as bx:
-        base_idx = bx * BLOCK_N
+    with T.Kernel(N // BLOCK_N, threads=256) as pid_n:
+        base_idx = pid_n * BLOCK_N
         for i in T.Parallel(BLOCK_N):
             C[base_idx + i] = A[base_idx + i] + B[base_idx + i]
 
@@ -105,15 +105,14 @@ def tl_mul_relu_1d(A, B, BLOCK_N: int):
     C = T.empty((N,), T.float16)
 
     # TODO: Implement this function
-    with T.Kernel(N // BLOCK_N, threads=256) as bx:
-        with T.Kernel(N // BLOCK_N, threads=256) as bx:
-            base_idx = bx * BLOCK_N
-            for i in T.Parallel(BLOCK_N):
-                C[base_idx + i] = T.if_then_else(
-                    A[base_idx + i] * B[base_idx + i] > 0,
-                    A[base_idx + i] * B[base_idx + i],
-                    0,
-                )
+    with T.Kernel(N // BLOCK_N, threads=256) as pid_n:
+        base_idx = pid_n * BLOCK_N
+        for i in T.Parallel(BLOCK_N):
+            C[base_idx + i] = T.if_then_else(
+                A[base_idx + i] * B[base_idx + i] > 0,
+                A[base_idx + i] * B[base_idx + i],
+                0,
+            )
 
     return C
 
@@ -177,8 +176,8 @@ def tl_mul_relu_1d_mem(A, B, BLOCK_N: int):
     C = T.empty((N,), dtype)
 
     # TODO: Implement this function
-    with T.Kernel(N // BLOCK_N, threads=256) as bx:
-        base_idx = bx * BLOCK_N
+    with T.Kernel(N // BLOCK_N, threads=256) as pid_n:
+        base_idx = pid_n * BLOCK_N
         A_local = T.alloc_fragment((BLOCK_N), dtype)
         B_local = T.alloc_fragment((BLOCK_N), dtype)
         C_local = T.alloc_fragment((BLOCK_N), dtype)

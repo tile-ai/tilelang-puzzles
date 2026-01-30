@@ -114,6 +114,7 @@ def run_copy_1d_multi_threads():
 
     test_puzzle(tl_copy_1d_multi_threads, ref_copy_1d, {"N": N})
 
+    # This may take a while since N is large
     bench_puzzle(
         tl_copy_1d_serial,
         ref_copy_1d,
@@ -150,8 +151,11 @@ def tl_copy_1d_parallel(A, BLOCK_N: int):
     B = T.empty((N,), T.float16)
 
     # TODO: Implement this function
-    with T.Kernel(N // BLOCK_N, threads=256) as bx:
-        T.copy(A[bx * BLOCK_N : (bx + 1) * BLOCK_N], B[bx * BLOCK_N : (bx + 1) * BLOCK_N])
+    with T.Kernel(N // BLOCK_N, threads=256) as pid_n:
+        T.copy(
+            A[pid_n * BLOCK_N : (pid_n + 1) * BLOCK_N],
+            B[pid_n * BLOCK_N : (pid_n + 1) * BLOCK_N],
+        )
 
     return B
 

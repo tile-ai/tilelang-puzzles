@@ -157,8 +157,8 @@ def tl_matmul_naive(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
 
     # TODO: Implement this function
     with T.Kernel(T.ceildiv(N, BLOCK_N), T.ceildiv(M, BLOCK_M), threads=128) as (
-        bx,
-        by,
+        pid_n,
+        pid_m,
     ):
         A_local = T.alloc_fragment((BLOCK_M, BLOCK_K), dtype)
         B_local = T.alloc_fragment((BLOCK_K, BLOCK_N), dtype)
@@ -166,11 +166,11 @@ def tl_matmul_naive(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
 
         T.clear(C_local)
         for k in T.Serial(K // BLOCK_K):
-            T.copy(A[by * BLOCK_M, k * BLOCK_K], A_local)
-            T.copy(B[k * BLOCK_K, bx * BLOCK_N], B_local)
+            T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_local)
+            T.copy(B[k * BLOCK_K, pid_n * BLOCK_N], B_local)
             T.gemm(A_local, B_local, C_local)
 
-        T.copy(C_local, C[by * BLOCK_M, bx * BLOCK_N])
+        T.copy(C_local, C[pid_m * BLOCK_M, pid_n * BLOCK_N])
 
     return C
 
@@ -246,8 +246,8 @@ def tl_matmul_opt(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
 
     # TODO: Implement this function
     with T.Kernel(T.ceildiv(N, BLOCK_N), T.ceildiv(M, BLOCK_M), threads=128) as (
-        bx,
-        by,
+        pid_n,
+        pid_m,
     ):
         A_shared = T.alloc_shared((BLOCK_M, BLOCK_K), dtype)
         B_shared = T.alloc_shared((BLOCK_K, BLOCK_N), dtype)
@@ -255,11 +255,11 @@ def tl_matmul_opt(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
 
         T.clear(C_local)
         for k in T.Pipelined(K // BLOCK_K, num_stages=3):
-            T.copy(A[by * BLOCK_M, k * BLOCK_K], A_shared)
-            T.copy(B[k * BLOCK_K, bx * BLOCK_N], B_shared)
+            T.copy(A[pid_m * BLOCK_M, k * BLOCK_K], A_shared)
+            T.copy(B[k * BLOCK_K, pid_n * BLOCK_N], B_shared)
             T.gemm(A_shared, B_shared, C_local)
 
-        T.copy(C_local, C[by * BLOCK_M, bx * BLOCK_N])
+        T.copy(C_local, C[pid_m * BLOCK_M, pid_n * BLOCK_N])
 
     return C
 
