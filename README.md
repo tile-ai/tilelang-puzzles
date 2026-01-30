@@ -14,13 +14,13 @@ TileLang Puzzles is a set of puzzles to help you learn [TileLang](https://github
 
 The only thing you need to install is [TileLang](https://github.com/tile-ai/tilelang) and its dependency. To check your installation, run:
 
-```python
+```bash
 python -c "import tilelang; print(tilelang.__version__);"
 ```
 
 You can also run our environment check script to confirm that TileLang and your GPU are configured correctly:
 
-```python
+```bash
 python3 scripts/check_tilelang_env.py
 ```
 
@@ -28,11 +28,11 @@ python3 scripts/check_tilelang_env.py
 
 We provide 10 puzzles in the `puzzles/` directory, each as a standalone executable script. Reference implementations are available in `ans/` for comparison. To run a puzzle, use:
 
-```
+```bash
 python3 puzzles/01-copy.py
 python3 ans/01-copy.py
 ```
 
 ## Acknowledgements
 
-This is project is inspired by the following projects: [Triton Puzzles](https://github.com/srush/Triton-Puzzles), [LeetGPU](https://leetgpu.com/).
+This is project is inspired by the following projects: [Triton Puzzles](https://github.com/srush/Triton-Puzzles) & [Triton Puzzles Lite](https://github.com/SiriusNEO/Triton-Puzzles-Lite), [LeetGPU](https://leetgpu.com/).
