@@ -11,17 +11,20 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import bench_puzzle, test_puzzle
 
-"""
-Softmax operator goes a little beyond the reduce sum. We also need to use serial loop
-to accumulate the summation. And we need to perfrom an element-wise exp operation on each element at the same time.
+r"""
+Softmax operator goes a little beyond the reduce sum. We also need to use serial loop to
+accumulate the summation. And we need to perform an element-wise exp operation on each element
+at the same time.
 
-Note that softmax needs to be computed in numerically stable form as in Python.
-To achieve this, we need to subtract the maximum value of each row from all elements in that row before applying the exponential function.
+Note that softmax needs to be computed in numerically stable form as in Python. To achieve this,
+we need to subtract the maximum value of each row from all elements in that row
+before applying the exponential function.
 
 HINT:
-1. Use `T.fill` to set the initial value of the buffer. `T.clear` sets all elements to zero by default, which may not be what you want.
+1. Use `T.fill` to set the initial value of the buffer. `T.clear` sets all elements to zero by
+default, which may not be what you want.
 
 3.We recommend not using `T.exp` but instead using `T.exp2`. You need the identity
 
@@ -30,8 +33,8 @@ HINT:
 
 The constant log2_e is provided.
 
-BONUS: Use "Online Softmax" algorithm to implement optimized softmax. This is also a core idea of FlashAttention
-algorithm. Through this, we can implement softmax with only two passes / loops.
+BONUS: Use "Online Softmax" algorithm to implement optimized softmax. This is also a core idea of
+FlashAttention algorithm. Through this, we can implement softmax with only two passes / loops.
 
 06-1: Softmax.
 
@@ -60,6 +63,7 @@ Definition:
         for j in range(M):
             B[i, j] /= SUM
 """
+
 
 def ref_softmax(A: torch.Tensor):
     assert len(A.shape) == 2
@@ -91,8 +95,17 @@ def run_softmax():
     M = 16384
     BLOCK_N = 16
     BLOCK_M = 256
-    test_puzzle(tl_softmax, ref_softmax, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
-    bench_puzzle(tl_softmax, ref_softmax, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M}, bench_torch=True)
+    test_puzzle(
+        tl_softmax,
+        ref_softmax,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
+    bench_puzzle(
+        tl_softmax,
+        ref_softmax,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+        bench_torch=True,
+    )
 
 
 if __name__ == "__main__":

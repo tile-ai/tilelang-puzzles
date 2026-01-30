@@ -11,7 +11,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import bench_puzzle, test_puzzle
 
 """
 We alreadly do broadcasting in previous example. Now let's see how to do reduction. Luckily,
@@ -21,7 +21,8 @@ with T.copy and T.Parallel we can already do many things!
 
 HINT:
 1. For reduction, we have `T.reduce` and `T.reduce_xxx`, where xxx represents the reduction
-operation, e.g., `T.reduce_sum`. Note that for efficiency, we need to perform these TileOps in the fragment buffers instead of global memory.
+operation, e.g., `T.reduce_sum`. Note that for efficiency, we need to perform these TileOps
+in the fragment buffers instead of global memory.
 2. You may need a serial loop to do this puzzle. Use `T.Serial` to create a serial loop.
 3. For numerical stability, we shift the data type to float32 for now.
 
@@ -43,6 +44,7 @@ Definition:
         for j in range(M):
             B[i] += A[i, j]
 """
+
 
 def ref_reduce_sum(A: torch.Tensor):
     assert len(A.shape) == 2
@@ -83,8 +85,18 @@ def run_reduce_sum():
     M = 16384
     BLOCK_N = 16
     BLOCK_M = 128
-    test_puzzle(tl_reduce_sum, ref_reduce_sum, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
-    bench_puzzle(tl_reduce_sum, ref_reduce_sum, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M}, bench_torch=True)
+    test_puzzle(
+        tl_reduce_sum,
+        ref_reduce_sum,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
+    bench_puzzle(
+        tl_reduce_sum,
+        ref_reduce_sum,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+        bench_torch=True,
+    )
+
 
 if __name__ == "__main__":
     run_reduce_sum()

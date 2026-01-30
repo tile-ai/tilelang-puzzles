@@ -12,7 +12,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle
 
 """
 Consider the fused vector multiplication ReLU example from the previous puzzle.
@@ -36,10 +36,11 @@ Definition:
             C[i, j] = max(0, A[i, j] * B[j])
 """
 
+
 def ref_mul_relu_bcast(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 1
-    assert A.shape[1] == B.shape[0] # M
+    assert A.shape[1] == B.shape[0]  # M
     assert A.dtype == B.dtype == torch.float16
 
     # torch.mul will automatically broadcast B to A's shape
@@ -65,7 +66,11 @@ def run_mul_relu_bcast():
     M = 4096
     BLOCK_N = 64
     BLOCK_M = 64
-    test_puzzle(tl_mul_relu_bcast, ref_mul_relu_bcast, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
+    test_puzzle(
+        tl_mul_relu_bcast,
+        ref_mul_relu_bcast,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
 
 
 """
@@ -97,8 +102,8 @@ Definition:
 def ref_mul_relu_bwd(A: torch.Tensor, B: torch.Tensor, dC: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 1
-    assert A.shape[0] == dC.shape[0] # N
-    assert A.shape[1] == B.shape[0] == dC.shape[1] # M
+    assert A.shape[0] == dC.shape[0]  # N
+    assert A.shape[1] == B.shape[0] == dC.shape[1]  # M
     assert len(dC.shape) == 2
     assert A.dtype == B.dtype == dC.dtype == torch.float16
 
@@ -138,7 +143,11 @@ def run_mul_relu_bwd():
     BLOCK_M = 64
     # kernel = tl_mul_relu_bwd(N, M, dtype, BLOCK_N, BLOCK_M)
     # kernel.print_source_code()
-    test_puzzle(tl_mul_relu_bwd, ref_mul_relu_bwd, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
+    test_puzzle(
+        tl_mul_relu_bwd,
+        ref_mul_relu_bwd,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
 
 
 if __name__ == "__main__":

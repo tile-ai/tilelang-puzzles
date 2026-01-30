@@ -1,7 +1,8 @@
 """
 Puzzle 10: Dequantized Matrix Multiplication
 ==============
-In the final puzzle in our journey, let's build a very useful variant of matmul kernel which can be used in real research work.
+In the final puzzle in our journey, let's build a very useful variant of matmul kernel which can be
+used in real research work.
 
 Category: ["official"]
 Difficulty: ["hard"]
@@ -11,12 +12,12 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle
 
 """
-Dequantized Matrix Multiplication is to multiply two matrices in different precisons, which is widely
-used in the depolyment of quantized LLMs. We consider a common setting here: FP16A * INT4B. Because
-INT4 is less than a byte, we usually packed two INT4 in a storage type, like UINT8.
+Dequantized Matrix Multiplication is to multiply two matrices in different precisons, which is
+widely used in the depolyment of quantized LLMs. We consider a common setting here: FP16A * INT4B.
+Because INT4 is less than a byte, we usually packed two INT4 in a storage type, like UINT8.
 
 10-1: Dequantized Matrix Multiplication.
 
@@ -48,20 +49,21 @@ Definition:
                 C[i, j * 2 + 1] += A[i, k] * B_high
 """
 
+
 def ref_dequant_matmul(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 2
-    assert A.shape[1] == B.shape[0] # K
+    assert A.shape[1] == B.shape[0]  # K
     assert A.dtype == torch.float16
     assert B.dtype == torch.uint8
 
     K = A.shape[1]
-    N = B.shape[1] * 2 # B.shape[1] == N // 2 because of packing
+    N = B.shape[1] * 2  # B.shape[1] == N // 2 because of packing
 
     B_dequantized = torch.zeros((K, N), dtype=torch.float16, device=B.device)
     B_dequantized[:, ::2] = B[:, :] & 0x0F
     B_dequantized[:, 1::2] = (B[:, :] >> 4) & 0x0F
-    B_dequantized = B_dequantized.to(torch.float16) - 8.0 # dequantize
+    B_dequantized = B_dequantized.to(torch.float16) - 8.0  # dequantize
 
     return torch.matmul(input=A, other=B_dequantized)
 
@@ -72,15 +74,18 @@ def tl_dequant_matmul(A, B, BLOCK_M: int, BLOCK_N: int, BLOCK_K: int):
     A_dtype = T.float16
     B_storage_dtype = T.uint8
     A: T.Tensor((M, K), A_dtype)
-    B: T.Tensor((K, N//2), B_storage_dtype)
+    B: T.Tensor((K, N // 2), B_storage_dtype)
     C = T.empty((M, N), A_dtype)
     accum_dtype = T.float32
 
     # TODO: Implement this function
-    with T.Kernel(T.ceildiv(M, BLOCK_M), T.ceildiv(N, BLOCK_N), threads=128) as (pid_m, pid_n):
+    with T.Kernel(T.ceildiv(M, BLOCK_M), T.ceildiv(N, BLOCK_N), threads=128) as (
+        pid_m,
+        pid_n,
+    ):
         A_shared = T.alloc_shared((BLOCK_M, BLOCK_K), A_dtype)
         B_shared = T.alloc_shared((BLOCK_K, BLOCK_N // 2), B_storage_dtype)
-        B_dequantized = T.alloc_shared((BLOCK_K, BLOCK_N), A_dtype) # dequantized B
+        B_dequantized = T.alloc_shared((BLOCK_K, BLOCK_N), A_dtype)  # dequantized B
         C_local = T.alloc_fragment((BLOCK_M, BLOCK_N), accum_dtype)
 
         T.clear(C_local)
@@ -112,7 +117,18 @@ def run_dequant_matmul():
     # A_dtype = torch.float16
     # B_storage_dtype = torch.uint8
     # accum_dtype = torch.float32
-    test_puzzle(tl_dequant_matmul, ref_dequant_matmul, {"M": M, "N": N, "K": K, "BLOCK_M": BLOCK_M, "BLOCK_N": BLOCK_N, "BLOCK_K": BLOCK_K})
+    test_puzzle(
+        tl_dequant_matmul,
+        ref_dequant_matmul,
+        {
+            "M": M,
+            "N": N,
+            "K": K,
+            "BLOCK_M": BLOCK_M,
+            "BLOCK_N": BLOCK_N,
+            "BLOCK_K": BLOCK_K,
+        },
+    )
 
 
 if __name__ == "__main__":

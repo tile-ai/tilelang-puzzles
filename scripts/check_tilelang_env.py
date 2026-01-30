@@ -12,7 +12,13 @@ tilelang.disable_cache()
 
 def run_gemm():
     @tilelang.jit
-    def gemm(A, B, block_M: int = 128, block_N: int = 128, block_K: int = 32,):
+    def gemm(
+        A,
+        B,
+        block_M: int = 128,
+        block_N: int = 128,
+        block_K: int = 32,
+    ):
         M, N, K = T.const("M, N, K")
 
         A: T.Tensor[[M, K], T.float16]
@@ -20,7 +26,10 @@ def run_gemm():
 
         C = T.empty((M, N), T.float16)
 
-        with T.Kernel(T.ceildiv(M, block_M), T.ceildiv(N, block_N), threads=128) as (bx, by):
+        with T.Kernel(T.ceildiv(M, block_M), T.ceildiv(N, block_N), threads=128) as (
+            bx,
+            by,
+        ):
             A_shared = T.alloc_shared((block_M, block_K), A.dtype)
             B_shared = T.alloc_shared((block_K, block_N), B.dtype)
             C_local = T.alloc_fragment((block_M, block_N), T.float32)
@@ -41,7 +50,6 @@ def run_gemm():
     print(C_torch.shape)
 
 
-
 if __name__ == "__main__":
     print("Installed TileLang version: ", tilelang.__version__)
     print("Installed TileLang Python path: ", tilelang.__path__)
@@ -54,4 +62,3 @@ if __name__ == "__main__":
     print("*************")
     print("Start compiling & running a simple GEMM kernel")
     run_gemm()
-

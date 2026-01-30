@@ -11,12 +11,17 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import bench_puzzle, test_puzzle
 
 """
-Convolution uses a sliding window approach to compute over a input tensors. The main characteristics of convolution is that it has strong data reuse patterns and requires careful memory access optimization. But with TileLang, we can ignore most of these details and focus on the logic.
+Convolution uses a sliding window approach to compute over a input tensors. The main
+characteristics of convolution is that it has strong data reuse patterns and requires careful
+memory access optimization. But with TileLang, we can ignore most of these details and focus on
+the logic.
 
-In this puzzle, we remove the "channel (C)" dimension to simplify the problem. We first look at the 1D convolution case, then extend to 2D. And we will learn how to use shared memory of GPU in this chapter.
+In this puzzle, we remove the "channel (C)" dimension to simplify the problem. We first look at
+the 1D convolution case, then extend to 2D. And we will learn how to use shared memory of GPU in
+this chapter.
 
 08-1: 1D Convolution.
 
@@ -42,8 +47,10 @@ Definition:
 
 
 """
-We can first consider a naive implementation. We can parallelize the outer loop over `N` and `L` to different blocks with `T.Kernel`.
-For the loop iterating `BLOCK_L`, we can use a serial implementation for now. Be careful that the data dependency in the convolution.
+We can first consider a naive implementation. We can parallelize the outer loop over `N` and `L` to
+different blocks with `T.Kernel`.
+For the loop iterating `BLOCK_L`, we can use a serial implementation for now. Be careful that the
+data dependency in the convolution.
 """
 
 
@@ -97,11 +104,20 @@ def run_conv1d_naive():
     BLOCK_N = 16
     BLOCK_L = 32
     KL = 32
-    test_puzzle(tl_conv1d_naive, ref_conv1d, {"N": N, "L": L, "KL": KL, "BLOCK_N": BLOCK_N, "BLOCK_L": BLOCK_L})
+    test_puzzle(
+        tl_conv1d_naive,
+        ref_conv1d,
+        {"N": N, "L": L, "KL": KL, "BLOCK_N": BLOCK_N, "BLOCK_L": BLOCK_L},
+    )
 
 
 """
-The naive implementation of Conv 1D works but it is not efficient. Remember that we mentioned Tensor Core and `T.gemm` in previous puzzle? Actually, we can also convert the convolution problem to a GEMM problem through a transformation called `im2col`. The idea is to transform the convolution into a matrix multiplication where each row of the input matrix corresponds to a local patch of the input tensor, and the kernel is reshaped into a matrix. This allows us to leverage highly optimized GEMM implementations.
+The naive implementation of Conv 1D works but it is not efficient. Remember that we mentioned
+Tensor Core and `T.gemm` in previous puzzle? Actually, we can also convert the convolution problem
+to a GEMM problem through a transformation called `im2col`. The idea is to transform the
+convolution into a matrix multiplication where each row of the input matrix corresponds to a local
+patch of the input tensor, and the kernel is reshaped into a matrix. This allows us to leverage
+highly optimized GEMM implementations.
 
 To present GEMM from degenerating to GEMV, we need to introduce an output channel dimension F.
 
@@ -129,6 +145,7 @@ Definition:
                         O[i, j, f] += X[i, j + k] * K[k, f]
 """
 
+
 def ref_conv1d_multi_outchannel(X: torch.Tensor, K: torch.Tensor):
     assert len(X.shape) == 2
     assert len(K.shape) == 2
@@ -148,14 +165,22 @@ def ref_conv1d_multi_outchannel(X: torch.Tensor, K: torch.Tensor):
     padding_size = KL - 1
     X_padded = torch.nn.functional.pad(X.view(N, 1, L), (0, padding_size))
 
-    return torch.conv1d(
-        input=X_padded,
-        weight=K.permute(1, 0).view(F, 1, KL),
-    ).permute(0, 2, 1).contiguous()
+    return (
+        torch.conv1d(
+            input=X_padded,
+            weight=K.permute(1, 0).view(F, 1, KL),
+        )
+        .permute(0, 2, 1)
+        .contiguous()
+    )
+
 
 """
-First let's implement the trivial extension of conv1d to multiple output channels, based on the above F=1 version.
+First let's implement the trivial extension of conv1d to multiple output channels, based on the
+above F=1 version.
 """
+
+
 @tilelang.jit(
     pass_configs={
         tilelang.PassConfigKey.TL_DISABLE_WARP_SPECIALIZED: True,
@@ -174,9 +199,12 @@ def tl_conv1d_multi_outchannel(X, K, BLOCK_N: int, BLOCK_L: int):
 
     return O
 
+
 """
 Then let's try img2col and use T.gemm to speedup the computation.
 """
+
+
 @tilelang.jit(
     pass_configs={
         tilelang.PassConfigKey.TL_DISABLE_WARP_SPECIALIZED: True,
@@ -214,9 +242,20 @@ def run_conv1d_img2col():
     }
     test_puzzle(tl_conv1d_multi_outchannel, ref_conv1d_multi_outchannel, args_dict)
     test_puzzle(tl_conv1d_img2col, ref_conv1d_multi_outchannel, args_dict)
-    bench_puzzle(tl_conv1d_multi_outchannel, ref_conv1d_multi_outchannel, args_dict, bench_torch=True, bench_name="Conv1D Multi OutChannel Naive")
-    bench_puzzle(tl_conv1d_img2col, ref_conv1d_multi_outchannel, args_dict, bench_torch=False, bench_name="Conv1D Img2Col")
-
+    bench_puzzle(
+        tl_conv1d_multi_outchannel,
+        ref_conv1d_multi_outchannel,
+        args_dict,
+        bench_torch=True,
+        bench_name="Conv1D Multi OutChannel Naive",
+    )
+    bench_puzzle(
+        tl_conv1d_img2col,
+        ref_conv1d_multi_outchannel,
+        args_dict,
+        bench_torch=False,
+        bench_name="Conv1D Img2Col",
+    )
 
 
 if __name__ == "__main__":

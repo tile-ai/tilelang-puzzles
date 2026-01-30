@@ -5,7 +5,7 @@ Utilities for TileLang puzzles.
 from typing import Callable
 import tilelang
 
-# We disable tilelang cache for turtorial.
+# We disable tilelang cache for tutorial.
 tilelang.disable_cache()
 
 from tilelang.jit import JITKernel, JITImpl
@@ -63,11 +63,19 @@ def _torch_tensor_materialize(params: list[KernelParam]):
     return inputs_in_torch_tensors
 
 
-def test_puzzle(puzzle_tl: JITImpl, puzzle_torch: Callable, tl_hyper_params: dict = {}, print_log: bool=False):
+def test_puzzle(
+    puzzle_tl: JITImpl,
+    puzzle_torch: Callable,
+    tl_hyper_params: dict = {},
+    print_log: bool = False,
+    atol: float = 1e-2,
+    rtol: float = 1e-2,
+):
     """Test a puzzle solution with given hyper parameters."""
 
     tl_kernel: JITKernel = puzzle_tl.compile(**tl_hyper_params)
-
+    # print(tl_kernel.get_kernel_source())
+    # exit()
     inputs_in_torch_tensors = _torch_tensor_materialize(tl_kernel.params)
 
     # As the kernel may modify the input tensors, we make a copy of them.
@@ -76,7 +84,7 @@ def test_puzzle(puzzle_tl: JITImpl, puzzle_torch: Callable, tl_hyper_params: dic
     output_torch = puzzle_torch(*inputs_in_torch_tensors)
     output_tl = tl_kernel(*inputs_copy)
 
-    match = torch.allclose(output_torch, output_tl, rtol=1e-1)
+    match = torch.allclose(output_torch, output_tl, atol=atol, rtol=rtol)
     match_emoji = "✅" if match else "❌"
     print(match_emoji, "Results match:", match)
 
@@ -86,10 +94,25 @@ def test_puzzle(puzzle_tl: JITImpl, puzzle_torch: Callable, tl_hyper_params: dic
         print("Inputs: ", inputs_in_torch_tensors)
         print("Yours:", output_tl.dtype, output_tl.shape, "\n", output_tl)
         print("Spec:", output_torch.dtype, output_torch.shape, "\n", output_torch)
-        print("Diff (True: correct, False: incorrect):", "\n", torch.isclose(output_torch, output_tl))
+        diff = torch.isclose(output_torch, output_tl, atol=atol, rtol=rtol)
+        print(
+            "Diff (True: correct, False: incorrect):",
+            "\n",
+            diff,
+        )
+        # idx = torch.where(~diff)
+        # print(idx)
+        print("Max diff:", torch.max(torch.abs(output_torch - output_tl)))
+        print("Mean diff:", torch.mean(torch.abs(output_torch - output_tl)))
 
 
-def bench_puzzle(puzzle_tl, puzzle_torch, tl_hyper_params: dict = {}, bench_name: str = "Tilelang", bench_torch: bool = False):
+def bench_puzzle(
+    puzzle_tl,
+    puzzle_torch,
+    tl_hyper_params: dict = {},
+    bench_name: str = "Tilelang",
+    bench_torch: bool = False,
+):
     """Benchmark a puzzle solution with given hyper parameters."""
 
     warmups = 10
@@ -130,4 +153,3 @@ def bench_puzzle(puzzle_tl, puzzle_torch, tl_hyper_params: dict = {}, bench_name
     torch.cuda.synchronize()
     tl_time = tl_start.elapsed_time(tl_end) / repeats
     print(f"{bench_name} time: {tl_time:.3f} ms")
-

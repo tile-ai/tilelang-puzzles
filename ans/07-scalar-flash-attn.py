@@ -11,12 +11,17 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import bench_puzzle, test_puzzle
 
 """
-Now we have conquered softmax / online softmax, we can now implement one of the most important operator in LLMs: FlashAttention.
+Now we have conquered softmax / online softmax, we can now implement one of the most important
+operator in LLMs: FlashAttention.
 
-To ensure a progressive learning experience, we will implement a scalar version of FlashAttention. And we also remove the multi-head attention part. So in total we only have two dimensions: batch size B and sequence length S, which are aligned with N, M in the previous puzzle. After such simplification, you will find we are not so far from the FlashAttention algorithm. And with TileLang, we can easily extend it to the full FlashAttention.
+To ensure a progressive learning experience, we will implement a scalar version of FlashAttention.
+And we also remove the multi-head attention part. So in total we only have two dimensions: batch
+size B and sequence length S, which are aligned with N, M in the previous puzzle. After such
+simplification, you will find we are not so far from the FlashAttention algorithm. And with
+TileLang, we can easily extend it to the full FlashAttention.
 
 06-1: Simplified Scalar Flash Attention.
 
@@ -51,12 +56,13 @@ Definition:
             O[i, j] = P[i, j] / SUM * V[i, j]
 """
 
+
 def ref_scalar_flash_attn(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor):
     assert len(Q.shape) == 2
     assert len(K.shape) == 2
     assert len(V.shape) == 2
-    assert Q.shape[0] == K.shape[0] == V.shape[0] # B
-    assert Q.shape[1] == K.shape[1] == V.shape[1] # S
+    assert Q.shape[0] == K.shape[0] == V.shape[0]  # B
+    assert Q.shape[1] == K.shape[1] == V.shape[1]  # S
     assert Q.dtype == K.dtype == V.dtype == torch.float32
     return torch.softmax(Q * K, dim=1).mul_(V)
 
@@ -108,7 +114,9 @@ def tl_scalar_flash_attn(Q, K, V, BLOCK_B: int, BLOCK_S: int):
             T.reduce_sum(cur_exp_QK, cur_sum_exp_QK, dim=1, clear=True)
 
             for i in T.Parallel(BLOCK_B):
-                lse[i] = cur_max_QK[i] * log2_e + T.log2(T.exp2(lse[i] - cur_max_QK[i] * log2_e) + cur_sum_exp_QK[i])
+                lse[i] = cur_max_QK[i] * log2_e + T.log2(
+                    T.exp2(lse[i] - cur_max_QK[i] * log2_e) + cur_sum_exp_QK[i]
+                )
 
         # The second loop use LSE to get the final output.
         # TODO(chaofan): Now this implementation is not very efficient.
@@ -118,7 +126,9 @@ def tl_scalar_flash_attn(Q, K, V, BLOCK_B: int, BLOCK_S: int):
             T.copy(V[pid_b * BLOCK_B, s_blk_id * BLOCK_S], V_local)
 
             for i, j in T.Parallel(BLOCK_B, BLOCK_S):
-                O_local[i, j] = T.exp2(Q_local[i, j] * K_local[i, j] * log2_e - lse[i]) * V_local[i, j]
+                O_local[i, j] = (
+                    T.exp2(Q_local[i, j] * K_local[i, j] * log2_e - lse[i]) * V_local[i, j]
+                )
 
             T.copy(O_local, O[pid_b * BLOCK_B, s_blk_id * BLOCK_S])
 
@@ -131,8 +141,18 @@ def run_scalar_flash_attn():
     S = 16384
     BLOCK_B = 16
     BLOCK_S = 128
-    test_puzzle(tl_scalar_flash_attn, ref_scalar_flash_attn, {"B": B, "S": S, "BLOCK_B": BLOCK_B, "BLOCK_S": BLOCK_S})
-    bench_puzzle(tl_scalar_flash_attn, ref_scalar_flash_attn, {"B": B, "S": S, "BLOCK_B": BLOCK_B, "BLOCK_S": BLOCK_S}, bench_torch=True)
+    test_puzzle(
+        tl_scalar_flash_attn,
+        ref_scalar_flash_attn,
+        {"B": B, "S": S, "BLOCK_B": BLOCK_B, "BLOCK_S": BLOCK_S},
+    )
+    bench_puzzle(
+        tl_scalar_flash_attn,
+        ref_scalar_flash_attn,
+        {"B": B, "S": S, "BLOCK_B": BLOCK_B, "BLOCK_S": BLOCK_S},
+        bench_torch=True,
+    )
+
 
 if __name__ == "__main__":
     run_scalar_flash_attn()

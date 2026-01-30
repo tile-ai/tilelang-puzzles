@@ -11,7 +11,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from common.utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle
 
 """
 Consider an outer vector addition operation. The result is a matrix where
@@ -21,7 +21,7 @@ The main difference from the previous puzzle is that C is now a 2D tensor and
 we have two different iterators in buffers A and B. So the dataflow is also
 a little different.
 
-But remeber that any N dimensional tensor can be viewed as a 1D tensor in memory.
+But remeMber that any N dimensional tensor can be viewed as a 1D tensor in memory.
 So we just need to handle the indexing properly.
 
 03-1: Outer vector addition.
@@ -41,6 +41,7 @@ Definition:
         for j in range(M):
             C[i, j] = A[i] + B[j]
 """
+
 
 def ref_outer_add(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 1
@@ -68,7 +69,11 @@ def run_outer_add():
     M = 4096
     BLOCK_N = 1024
     BLOCK_M = 1024
-    test_puzzle(tl_outer_add, ref_outer_add, {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
+    test_puzzle(
+        tl_outer_add,
+        ref_outer_add,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
 
 
 if __name__ == "__main__":
