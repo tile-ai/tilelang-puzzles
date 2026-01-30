@@ -26,7 +26,7 @@ python3 scripts/check_tilelang_env.py
 
 #### Run Puzzles
 
-We provide 10 puzzles in the puzzles/ directory, each as a standalone executable script. Reference implementations are available in ans/ for comparison. To run a puzzle, use:
+We provide 10 puzzles in the `puzzles/` directory, each as a standalone executable script. Reference implementations are available in `ans/` for comparison. To run a puzzle, use:
 
 ```
 python3 puzzles/01-copy.py

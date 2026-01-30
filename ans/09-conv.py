@@ -50,7 +50,7 @@ For the loop iterating `BLOCK_L`, we can use a serial implementation for now. Be
 def ref_conv1d(X: torch.Tensor, K: torch.Tensor):
     assert len(X.shape) == 2
     assert len(K.shape) == 1
-    assert X.dtype == K.dtype == torch.float32
+    assert X.dtype == K.dtype == torch.float16
 
     # for i in range(N):
     #     for j in range(L):
@@ -79,7 +79,8 @@ def ref_conv1d(X: torch.Tensor, K: torch.Tensor):
 )
 def tl_conv1d_naive(X, K, BLOCK_N: int, BLOCK_L: int):
     N, L, KL = T.const("N, L, KL")
-    dtype = T.float32
+    dtype = T.float16
+    accum_dtype = T.float32
     X: T.Tensor((N, L), dtype)
     K: T.Tensor((KL,), dtype)
     O = T.empty((N, L), dtype)
@@ -88,9 +89,9 @@ def tl_conv1d_naive(X, K, BLOCK_N: int, BLOCK_L: int):
     with T.Kernel(N // BLOCK_N, L // BLOCK_L, threads=256) as (pid_n, pid_l):
         X_shared = T.alloc_shared((BLOCK_N, BLOCK_L + KL), dtype)
         K_local = T.alloc_fragment((KL), dtype)
-        O_local = T.alloc_shared((BLOCK_N,), dtype)
+        O_local = T.alloc_shared((BLOCK_N,), accum_dtype)
 
-        temp = T.alloc_fragment((BLOCK_N, KL), dtype)  # temporary buffer for reduce
+        temp = T.alloc_fragment((BLOCK_N, KL), accum_dtype)  # temporary buffer for reduce
 
         T.copy(X[pid_n * BLOCK_N, pid_l * BLOCK_L], X_shared)
         T.copy(K, K_local)
@@ -99,7 +100,7 @@ def tl_conv1d_naive(X, K, BLOCK_N: int, BLOCK_L: int):
             for i, kl in T.Parallel(BLOCK_N, KL):
                 # Perform convolution operation
                 if l + kl < L:
-                    temp[i, kl] = X_shared[i, l + kl] * K_local[kl]
+                    temp[i, kl] = X_shared[i, l + kl].astype(accum_dtype) * K_local[kl].astype(accum_dtype)
             T.reduce_sum(temp, O_local, dim=-1, clear=True)
             T.copy(O_local, O[pid_n * BLOCK_N : (pid_n + 1) * BLOCK_N, pid_l * BLOCK_L + l])
 
@@ -148,7 +149,7 @@ Definition:
 def ref_conv1d_multi_outchannel(X: torch.Tensor, K: torch.Tensor):
     assert len(X.shape) == 2
     assert len(K.shape) == 2
-    assert X.dtype == K.dtype == torch.float32
+    assert X.dtype == K.dtype == torch.float16
 
     # for i in range(N):
     #     for j in range(L):
@@ -180,7 +181,8 @@ First let's implement the trivial extension of conv1d to multiple output channel
 )
 def tl_conv1d_multi_outchannel(X, K, BLOCK_N: int, BLOCK_L: int):
     N, L, KL, F = T.const("N, L, KL, F")
-    dtype = "float32"
+    dtype = T.float16
+    accum_dtype = T.float32
     X: T.Tensor((N, L), dtype)
     K: T.Tensor((KL, F), dtype)
     O = T.empty((N, L, F), dtype)
@@ -189,9 +191,9 @@ def tl_conv1d_multi_outchannel(X, K, BLOCK_N: int, BLOCK_L: int):
     with T.Kernel(N // BLOCK_N, L // BLOCK_L, threads=256) as (pid_n, pid_l):
         X_shared = T.alloc_shared((BLOCK_N, BLOCK_L + KL), dtype)
         K_local = T.alloc_fragment((KL, F), dtype)
-        O_local = T.alloc_shared((BLOCK_N, F), dtype)
+        O_local = T.alloc_shared((BLOCK_N, F), accum_dtype)
 
-        temp = T.alloc_fragment((BLOCK_N, KL, F), dtype)  # temporary buffer for reduce
+        temp = T.alloc_fragment((BLOCK_N, KL, F), accum_dtype)  # temporary buffer for reduce
 
         T.copy(X[pid_n * BLOCK_N, pid_l * BLOCK_L], X_shared)
         T.copy(K, K_local)
@@ -200,7 +202,7 @@ def tl_conv1d_multi_outchannel(X, K, BLOCK_N: int, BLOCK_L: int):
             for i, f, kl in T.Parallel(BLOCK_N, F, KL):
                 # Perform convolution operation
                 if l + kl < L:
-                    temp[i, kl, f] = X_shared[i, l + kl] * K_local[kl, f]
+                    temp[i, kl, f] = X_shared[i, l + kl].astype(accum_dtype) * K_local[kl, f].astype(accum_dtype)
             T.reduce_sum(temp, O_local, dim=1, clear=True)
             T.copy(O_local, O[pid_n * BLOCK_N : (pid_n + 1) * BLOCK_N, pid_l * BLOCK_L + l, :])
 
@@ -217,7 +219,8 @@ Then let's try img2col and use T.gemm to speedup the computation.
 )
 def tl_conv1d_img2col(X, K, BLOCK_N: int, BLOCK_L: int):
     N, L, KL, F = T.const("N, L, KL, F")
-    dtype = "float32"
+    dtype = T.float16
+    accum_dtype = T.float32
     X: T.Tensor((N, L), dtype)
     K: T.Tensor((KL, F), dtype)
     O = T.empty((N, L, F), dtype)
@@ -226,7 +229,7 @@ def tl_conv1d_img2col(X, K, BLOCK_N: int, BLOCK_L: int):
     with T.Kernel(N // BLOCK_N, L // BLOCK_L, threads=256) as (pid_n, pid_l):
         X_shared = T.alloc_shared((BLOCK_N, BLOCK_L, KL), dtype)
         K_shared = T.alloc_shared((KL, F), dtype)
-        O_local = T.alloc_fragment((BLOCK_N * BLOCK_L, F), dtype)
+        O_local = T.alloc_fragment((BLOCK_N * BLOCK_L, F), accum_dtype)
 
         for i, j, k in T.Parallel(BLOCK_N, BLOCK_L, KL):
             if pid_l * BLOCK_L + j + k < L:
@@ -236,7 +239,7 @@ def tl_conv1d_img2col(X, K, BLOCK_N: int, BLOCK_L: int):
 
         X_reshaped = T.reshape(X_shared, (BLOCK_N * BLOCK_L, KL))
         T.copy(K, K_shared)
-        T.gemm(X_reshaped, K_shared, O_local,clear_accum=True)
+        T.gemm(X_reshaped, K_shared, O_local, clear_accum=True)
         O_reshaped = T.reshape(O_local, (BLOCK_N, BLOCK_L, F))
         T.copy(O_reshaped, O[pid_n * BLOCK_N: (pid_n+1) * BLOCK_N, pid_l * BLOCK_L:(pid_l+1) * BLOCK_L, :])
 
@@ -268,4 +271,4 @@ def run_conv1d_img2col():
 
 if __name__ == "__main__":
     run_conv1d_naive()
-    # run_conv1d_img2col()
+    run_conv1d_img2col()
