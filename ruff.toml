@@ -1,0 +1,12 @@
+line-length = 100
+indent-width = 4
+target-version = "py310"
+
+[lint]
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = ["E741"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true

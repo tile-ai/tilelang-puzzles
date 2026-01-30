@@ -11,7 +11,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from utils import test_puzzle, bench_puzzle
+from common.utils import bench_puzzle, test_puzzle
 
 """
 We alreadly do broadcasting in previous example. Now let's see how to do reduction. Luckily,
@@ -21,7 +21,8 @@ with T.copy and T.Parallel we can already do many things!
 
 HINT:
 1. For reduction, we have `T.reduce` and `T.reduce_xxx`, where xxx represents the reduction
-operation, e.g., `T.reduce_sum`. Note that for efficiency, we need to perform these TileOps in the fragment buffers instead of global memory.
+operation, e.g., `T.reduce_sum`. Note that for efficiency, we need to perform these TileOps
+in the fragment buffers instead of global memory.
 2. You may need a serial loop to do this puzzle. Use `T.Serial` to create a serial loop.
 3. For numerical stability, we shift the data type to float32 for now.
 
@@ -44,14 +45,11 @@ Definition:
             B[i] += A[i, j]
 """
 
-def ref_reduce_sum(A: torch.Tensor, B: torch.Tensor, N: int, M: int, dtype: torch.dtype):
-    assert len(A.shape) == 2
-    assert len(B.shape) == 1
-    assert A.shape[0] == B.shape[0] == N
-    assert A.shape[1] == M
-    assert dtype == A.dtype == B.dtype == torch.float32
 
-    B.copy_(torch.sum(A, dim=1))
+def ref_reduce_sum(A: torch.Tensor):
+    assert len(A.shape) == 2
+    assert A.dtype == torch.float32
+    return torch.sum(A, dim=1)
 
 
 @tilelang.jit(
@@ -60,25 +58,25 @@ def ref_reduce_sum(A: torch.Tensor, B: torch.Tensor, N: int, M: int, dtype: torc
         tilelang.PassConfigKey.TL_DISABLE_TMA_LOWER: True,
     },
 )
-def tl_reduce_sum(N: int, M: int, dtype: torch.dtype, BLOCK_N: int, BLOCK_M: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((N, M), dtype),
-        B: T.Buffer((N,), dtype),
-    ):
-        # TODO: Implement this function
-        with T.Kernel(N // BLOCK_N, threads=256) as pid_n:
-            A_local = T.alloc_fragment((BLOCK_N, BLOCK_M), dtype)
-            B_local = T.alloc_fragment((BLOCK_N,), dtype)
-            T.clear(B_local)
+def tl_reduce_sum(A, BLOCK_N: int, BLOCK_M: int):
+    N, M = T.const("N, M")
+    dtype = T.float32
+    A: T.Tensor((N, M), dtype)
+    B = T.empty((N,), dtype)
 
-            for m_blk_id in T.Serial(M // BLOCK_M):
-                T.copy(A[pid_n * BLOCK_N, m_blk_id * BLOCK_M], A_local)
-                T.reduce_sum(A_local, B_local, dim=1, clear=False)
+    # TODO: Implement this function
+    with T.Kernel(N // BLOCK_N, threads=256) as pid_n:
+        A_local = T.alloc_fragment((BLOCK_N, BLOCK_M), dtype)
+        B_local = T.alloc_fragment((BLOCK_N,), dtype)
+        T.clear(B_local)
 
-            T.copy(B_local, B[pid_n * BLOCK_N])
+        for m_blk_id in T.Serial(M // BLOCK_M):
+            T.copy(A[pid_n * BLOCK_N, m_blk_id * BLOCK_M], A_local)
+            T.reduce_sum(A_local, B_local, dim=1, clear=False)
 
-    return kernel
+        T.copy(B_local, B[pid_n * BLOCK_N])
+
+    return B
 
 
 def run_reduce_sum():
@@ -87,9 +85,18 @@ def run_reduce_sum():
     M = 16384
     BLOCK_N = 16
     BLOCK_M = 128
-    dtype = torch.float32
-    test_puzzle(tl_reduce_sum, ref_reduce_sum, {"N": N, "M": M, "dtype": dtype}, {"BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
-    bench_puzzle(tl_reduce_sum, ref_reduce_sum, {"N": N, "M": M, "dtype": dtype}, {"BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M}, bench_torch=True)
+    test_puzzle(
+        tl_reduce_sum,
+        ref_reduce_sum,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
+    bench_puzzle(
+        tl_reduce_sum,
+        ref_reduce_sum,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+        bench_torch=True,
+    )
+
 
 if __name__ == "__main__":
     run_reduce_sum()

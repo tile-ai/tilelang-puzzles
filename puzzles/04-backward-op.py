@@ -12,7 +12,7 @@ import tilelang
 import tilelang.language as T
 import torch
 
-from utils import test_puzzle, bench_puzzle
+from common.utils import test_puzzle
 
 """
 Consider the fused vector multiplication ReLU example from the previous puzzle.
@@ -36,33 +36,28 @@ Definition:
             C[i, j] = max(0, A[i, j] * B[j])
 """
 
-def ref_mul_relu_bcast(A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, N: int, M: int, dtype: torch.dtype):
+
+def ref_mul_relu_bcast(A: torch.Tensor, B: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 1
-    assert A.shape[0] == N
-    assert A.shape[1] == B.shape[0] == M
-    assert len(C.shape) == 2
-    assert C.shape[0] == N
-    assert C.shape[1] == M
-    assert dtype == A.dtype == B.dtype == C.dtype == torch.float16
+    assert A.shape[1] == B.shape[0]  # M
+    assert A.dtype == B.dtype == torch.float16
 
     # torch.mul will automatically broadcast B to A's shape
-    torch.mul(input=A, other=B, out=C)
-    C.relu_()
+    return (A * B).relu_()
 
 
 @tilelang.jit
-def tl_mul_relu_bcast(N: int, M: int, dtype: torch.dtype, BLOCK_N: int, BLOCK_M: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((N, M), dtype),
-        B: T.Buffer((M,), dtype),
-        C: T.Buffer((N, M), dtype)
-    ):
-        # TODO: Implement this function
-        pass
+def tl_mul_relu_bcast(A, B, BLOCK_N: int, BLOCK_M: int):
+    N, M = T.const("N, M")
+    dtype = T.float16
+    A: T.Tensor((N, M), dtype)
+    B: T.Tensor((M,), dtype)
+    C = T.empty((N, M), dtype)
 
-    return kernel
+    # TODO: Implement this function
+
+    return C
 
 
 def run_mul_relu_bcast():
@@ -71,8 +66,11 @@ def run_mul_relu_bcast():
     M = 4096
     BLOCK_N = 64
     BLOCK_M = 64
-    dtype = torch.float16
-    test_puzzle(tl_mul_relu_bcast, ref_mul_relu_bcast, {"N": N, "M": M, "dtype": dtype}, {"BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
+    test_puzzle(
+        tl_mul_relu_bcast,
+        ref_mul_relu_bcast,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
 
 
 """
@@ -101,15 +99,13 @@ Definition:
 """
 
 
-def ref_mul_relu_bwd(A: torch.Tensor, B: torch.Tensor, dC: torch.Tensor, dA: torch.Tensor, N: int, M: int, dtype: torch.dtype):
+def ref_mul_relu_bwd(A: torch.Tensor, B: torch.Tensor, dC: torch.Tensor):
     assert len(A.shape) == 2
     assert len(B.shape) == 1
-    assert A.shape[0] == N
-    assert A.shape[1] == B.shape[0] == M
+    assert A.shape[0] == dC.shape[0]  # N
+    assert A.shape[1] == B.shape[0] == dC.shape[1]  # M
     assert len(dC.shape) == 2
-    assert dC.shape[0] == N
-    assert dC.shape[1] == M
-    assert dtype == A.dtype == B.dtype == dC.dtype == torch.float16
+    assert A.dtype == B.dtype == dC.dtype == torch.float16
 
     A = A.clone()
     B = B.clone()
@@ -117,7 +113,7 @@ def ref_mul_relu_bwd(A: torch.Tensor, B: torch.Tensor, dC: torch.Tensor, dA: tor
     B.requires_grad_(True)
     C = torch.relu(A * B)
     C.backward(dC)
-    dA.copy_(A.grad)
+    return A.grad
 
 
 @tilelang.jit(
@@ -126,18 +122,17 @@ def ref_mul_relu_bwd(A: torch.Tensor, B: torch.Tensor, dC: torch.Tensor, dA: tor
         tilelang.PassConfigKey.TL_DISABLE_TMA_LOWER: True,
     },
 )
-def tl_mul_relu_bwd(N: int, M: int, dtype: torch.dtype, BLOCK_N: int, BLOCK_M: int):
-    @T.prim_func
-    def kernel(
-        A: T.Buffer((N, M), dtype),
-        B: T.Buffer((M,), dtype),
-        dC: T.Buffer((N, M), dtype),
-        dA: T.Buffer((N, M), dtype)
-    ):
-        # TODO: Implement this function
-        pass
+def tl_mul_relu_bwd(A, B, dC, BLOCK_N: int, BLOCK_M: int):
+    N, M = T.const("N, M")
+    dtype = T.float16
+    A: T.Tensor((N, M), dtype)
+    B: T.Tensor((M,), dtype)
+    dC: T.Tensor((N, M), dtype)
+    dA = T.empty((N, M), dtype)
 
-    return kernel
+    # TODO: Implement this function
+
+    return dA
 
 
 def run_mul_relu_bwd():
@@ -146,10 +141,13 @@ def run_mul_relu_bwd():
     M = 4096
     BLOCK_N = 64
     BLOCK_M = 64
-    dtype = torch.float16
     # kernel = tl_mul_relu_bwd(N, M, dtype, BLOCK_N, BLOCK_M)
     # kernel.print_source_code()
-    test_puzzle(tl_mul_relu_bwd, ref_mul_relu_bwd, {"N": N, "M": M, "dtype": dtype}, {"BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M})
+    test_puzzle(
+        tl_mul_relu_bwd,
+        ref_mul_relu_bwd,
+        {"N": N, "M": M, "BLOCK_N": BLOCK_N, "BLOCK_M": BLOCK_M},
+    )
 
 
 if __name__ == "__main__":
