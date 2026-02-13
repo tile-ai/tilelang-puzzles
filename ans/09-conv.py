@@ -275,10 +275,9 @@ def tl_conv1d_img2col(X, K, BLOCK_N: int, BLOCK_L: int):
         O_local = T.alloc_fragment((BLOCK_N * BLOCK_L, F), accum_dtype)
 
         for i, j, k in T.Parallel(BLOCK_N, BLOCK_L, KL):
-            if pid_l * BLOCK_L + j + k < L:
-                X_shared[i, j, k] = T.if_then_else(
-                    pid_l * BLOCK_L + j + k < L, X[pid_n * BLOCK_N + i, pid_l * BLOCK_L + j + k], 0
-                )
+            X_shared[i, j, k] = T.if_then_else(
+                pid_l * BLOCK_L + j + k < L, X[pid_n * BLOCK_N + i, pid_l * BLOCK_L + j + k], 0
+            )
         X_reshaped = T.reshape(X_shared, (BLOCK_N * BLOCK_L, KL))
         T.copy(K, K_shared)
         T.gemm(X_reshaped, K_shared, O_local, clear_accum=True)
@@ -305,6 +304,7 @@ def run_conv1d_img2col():
         "BLOCK_L": BLOCK_L,
     }
     test_puzzle(tl_conv1d_multi_outchannel, ref_conv1d_multi_outchannel, args_dict)
+    test_puzzle(tl_conv1d_img2col, ref_conv1d_multi_outchannel, args_dict)
     bench_puzzle(
         tl_conv1d_multi_outchannel,
         ref_conv1d_multi_outchannel,
