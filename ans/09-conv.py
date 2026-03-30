@@ -109,10 +109,12 @@ def tl_conv1d_naive(X, K, BLOCK_N: int, BLOCK_L: int):
         for l in T.Serial(BLOCK_L):
             for i, kl in T.Parallel(BLOCK_N, KL):
                 # Perform convolution operation
-                if l + kl < L:
+                if pid_l * BLOCK_L + l + kl < L:
                     temp[i, kl] = X_shared[i, l + kl].astype(accum_dtype) * K_local[kl].astype(
                         accum_dtype
                     )
+                else:
+                    temp[i, kl] = 0
             T.reduce_sum(temp, O_local, dim=-1, clear=True)
             T.copy(O_local, O[pid_n * BLOCK_N : (pid_n + 1) * BLOCK_N, pid_l * BLOCK_L + l])
 
@@ -236,10 +238,12 @@ def tl_conv1d_multi_outchannel(X, K, BLOCK_N: int, BLOCK_L: int):
         for l in T.Serial(BLOCK_L):
             for i, f, kl in T.Parallel(BLOCK_N, F, KL):
                 # Perform convolution operation
-                if l + kl < L:
+                if pid_l * BLOCK_L + l + kl < L:
                     temp[i, kl, f] = X_shared[i, l + kl].astype(accum_dtype) * K_local[
                         kl, f
                     ].astype(accum_dtype)
+                else:
+                    temp[i, kl, f] = 0
             T.reduce_sum(temp, O_local, dim=1, clear=True)
             T.copy(
                 O_local,
