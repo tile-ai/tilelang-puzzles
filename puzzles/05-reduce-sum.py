@@ -14,7 +14,7 @@ import torch
 from common.utils import bench_puzzle, test_puzzle
 
 """
-We alreadly do broadcasting in previous example. Now let's see how to do reduction. Luckily,
+We already do broadcasting in previous example. Now let's see how to do reduction. Luckily,
 we don't need to implement detailed reduction logics since TileLang provides built-in
 TileOps. Before this, T.copy is the only TileOp we have seen. But we have experienced that
 with T.copy and T.Parallel we can already do many things!
