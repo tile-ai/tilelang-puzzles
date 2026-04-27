@@ -52,7 +52,7 @@ Intermediates:
 
 Definition:
     for i in range(N):
-        S = 0
+        SUM = 0
         MAX = -inf
         for j in range(M):
             MAX = max(A[i, j], MAX)
