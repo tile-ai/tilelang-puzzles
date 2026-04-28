@@ -30,7 +30,7 @@ in the fragment buffers instead of global memory.
 
 Inputs:
     A: Tensor([N, M], float32)  # input tensor
-    B: Tensor([M,], float32)  # input tensor
+    B: Tensor([N,], float32)  # input tensor
     N: int   # size of the tensor. 1 <= N <= 4096
     M: int   # size of the tensor. 1 <= M <= 16384
 
