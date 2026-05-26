@@ -29,7 +29,7 @@ Inputs:
     X: Tensor([N, L], float16)  # input tensor
     K: Tensor([KL,], float16)  # kernel tensor
     N: int   # batch size dimension. 1 <= N <= 64
-    H: int   # length dimension. 1 <= H <= 1024
+    L: int   # length dimension. 1 <= L <= 1024
     KL: int  # kernel height. 1 <= KH <= 32
 
 Output:
@@ -130,7 +130,7 @@ Inputs:
     X: Tensor([N, L], float16)  # input tensor
     K: Tensor([KL, F], float16)  # kernel tensor
     N: int   # batch size dimension. 1 <= N <= 64
-    H: int   # length dimension. 1 <= H <= 1024
+    L: int   # length dimension. 1 <= L <= 1024
     KL: int  # kernel height. 1 <= KH <= 32
     F: int   # filter channels. 32 <= F <= 128
 

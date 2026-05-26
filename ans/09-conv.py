@@ -29,7 +29,7 @@ Inputs:
     X: Tensor([N, L], float16)  # input tensor
     K: Tensor([KL,], float16)  # kernel tensor
     N: int   # batch size dimension. 1 <= N <= 64
-    H: int   # length dimension. 1 <= H <= 1024
+    L: int   # length dimension. 1 <= L <= 1024
     KL: int  # kernel height. 1 <= KH <= 32
 
 Output:
@@ -96,7 +96,7 @@ def tl_conv1d_naive(X, K, BLOCK_N: int, BLOCK_L: int):
     O = T.empty((N, L), dtype)
 
     # TODO: Implement this function
-    with T.Kernel(N // BLOCK_N), L // BLOCK_L as (pid_n, pid_l):
+    with T.Kernel(N // BLOCK_N, L // BLOCK_L) as (pid_n, pid_l):
         X_local = T.alloc_shared((BLOCK_N, BLOCK_L + KL), dtype)
         K_local = T.alloc_fragment((KL), dtype)
         O_local = T.alloc_fragment((BLOCK_N, BLOCK_L), accum_dtype)
@@ -144,7 +144,7 @@ Inputs:
     X: Tensor([N, L], float16)  # input tensor
     K: Tensor([KL, F], float16)  # kernel tensor
     N: int   # batch size dimension. 1 <= N <= 64
-    H: int   # length dimension. 1 <= H <= 1024
+    L: int   # length dimension. 1 <= L <= 1024
     KL: int  # kernel height. 1 <= KH <= 32
     F: int   # filter channels. 32 <= F <= 128
 
