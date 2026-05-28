@@ -21,7 +21,7 @@ The main difference from the previous puzzle is that C is now a 2D tensor and
 we have two different iterators in buffers A and B. So the dataflow is also
 a little different.
 
-But remeMber that any N dimensional tensor can be viewed as a 1D tensor in memory.
+But remember that any N dimensional tensor can be viewed as a 1D tensor in memory.
 So we just need to handle the indexing properly.
 
 03-1: Outer vector addition.
