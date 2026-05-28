@@ -141,7 +141,7 @@ The rest of the implementation is similar to the previous version. We assume tha
 by BLOCK_N.
 
 Note: You will need to handle the memory access ranges for different blocks. Fortunately,
-we have `bx` (the block index) available, so you can compute the start and end indices for
+we have `pid_n` (the program/block index) available, so you can compute the start and end indices for
 each block accordingly.
 """
 
