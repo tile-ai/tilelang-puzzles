@@ -201,7 +201,7 @@ allocate shared memory for A and B tiles.
 important optimization technique to overlap computation and memory access. In our case, we can use
 software pipeline to overlap the loading of A and B tiles with the computation of the GEMM
 operation. This is achieved by using `T.Pipeline` to replace `T.Serial` and specifying a proper
-stage number, like num_stage=3.
+stage number, like num_stages=3.
 
 After modifying the code, we can take a look at the generated CUDA code and compare the performance
 improvement.
