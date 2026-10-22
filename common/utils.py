@@ -13,6 +13,7 @@ from tilelang.engine.param import KernelParam
 
 import torch
 
+torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = False
 # torch.set_printoptions(profile="full")
 
 
