@@ -51,7 +51,7 @@ Definition:
         for j in range(S):
             P[i, j] = exp(QK[i, j] - MAX)
             SUM += P[i, j]
-        for j in range(M):
+        for j in range(S):
             O[i, j] = P[i, j] / SUM * V[i, j]
 """
 
